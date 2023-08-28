@@ -19,17 +19,11 @@ use esp32c3_hal::interrupt;
 unsafe fn entry() -> ! {
     rtt_init_print!(); //this macro generates the SEGGER_RTT block in memory required for debug printing
     
-    //this block enables and sets up the two software interrupts we use for our measurement.
+    //this block enables and sets up the software interrupt we use for our measurement.
     interrupt::enable(
         peripherals::Interrupt::FROM_CPU_INTR1,
         interrupt::Priority::Priority1,
         interrupt::CpuInterrupt::Interrupt1,
-    )
-    .unwrap();
-    interrupt::enable(
-        peripherals::Interrupt::FROM_CPU_INTR2,
-        interrupt::Priority::Priority2,
-        interrupt::CpuInterrupt::Interrupt2,
     )
     .unwrap();
     asm!(
@@ -42,9 +36,9 @@ unsafe fn entry() -> ! {
 
     asm!(
         "
-        li t0, 0x600C002C #FROM_CPU_INTR1 (refer to ESP32C3-TRM)
-        li t1, 1    #set flag
-        sw t1, 0(t0) #raise FROM_CPU_INTR1
+        li t0, 0x600C002C # FROM_CPU_INTR1 (refer to ESP32C3-TRM)
+        li t1, 1          # set flag
+        sw t1, 0(t0)      # raise FROM_CPU_INTR1
         "
     );
     rprintln!("Performance counter:{}", fetch_performance_timer());
@@ -144,7 +138,7 @@ unsafe fn cpu_int_1_handler(){
         li t0, 0x600C002C #FROM_CPU_INTR1 (refer to ESP32C3-TRM)
         sw zero, 0(t0) #reset FROM_CPU_INTR1
     ");
-    rprintln!("handler");
+    rprintln!("Handler entered");
 }
 
 //a convenience function for reading the performance timer
