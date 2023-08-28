@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.check.allTargets": false,
+    "cSpell.ignoreWords": [
+        "CNTL",
+        "GPIO",
+        "blinky",
+        "espflash",
+        "imac",
+        "println",
+        "riscv",
+        "rprintln",
+        "rustup",
+        "rwdt",
+        "usart"
+    ]
+}
