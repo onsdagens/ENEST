@@ -52,7 +52,47 @@ global_asm!(
     "
         # we place the ENEST traps in the trap section
         .section .trap, \"ax\"
+        .global _start_trap
 
+        _start_trap:
+        addi    sp, sp, -0x4c   # allocate space for the context on the stack
+                sw      a0, 0x10(sp)    # start by pushing a0 and a1, we need them to stack CSRs and set threshold
+                sw      a1, 0x14(sp)
+                sw      ra, 0x0c(sp)    # stack the caller saved registers
+                sw      a2, 0x18(sp)
+                sw      a3, 0x1c(sp)
+                sw      a4, 0x20(sp)
+                sw      a5, 0x24(sp)
+                sw      a6, 0x28(sp)
+                sw      a7, 0x2c(sp)
+                sw      t0, 0x30(sp)
+                sw      t1, 0x34(sp)
+                sw      t2, 0x38(sp)
+                sw      t3, 0x3c(sp)
+                sw      t4, 0x40(sp)
+                sw      t5, 0x44(sp)
+                sw      t6, 0x48(sp)
+
+                jal ra, _exception_handler
+
+                lw      ra, 0x0c(sp)
+                lw      a0, 0x10(sp)
+                lw      a1, 0x14(sp)
+                lw      a2, 0x18(sp)
+                lw      a3, 0x1c(sp)
+                lw      a4, 0x20(sp)
+                lw      a5, 0x24(sp)
+                lw      a6, 0x28(sp)
+                lw      a7, 0x2c(sp)
+                lw      t0, 0x30(sp)
+                lw      t1, 0x34(sp)
+                lw      t2, 0x38(sp)
+                lw      t3, 0x3c(sp)
+                lw      t4, 0x40(sp)
+                lw      t5, 0x44(sp)
+                lw      t6, 0x48(sp)
+                addi    sp, sp, 0x4c
+                mret
         # the esp-riscv-rt provides us with a vector table filled
         # with weakly defined symbols. we define the ENEST traps as global
         # symbols to override them. now, the vector table is pointing directly
@@ -60,6 +100,7 @@ global_asm!(
         .global _start_trap1
 
         _start_trap1:
+        #ecall
         #csrrwi x0, 0x7e1, 0     # disable timer
         csrrwi  x0, 0x7e1, 1 #enable timer
         addi    sp, sp, -0x4c   # allocate space for the context on the stack
@@ -143,6 +184,13 @@ unsafe fn cpu_int_1_handler() {
     "
     );
     println!("Handler entered");
+}
+
+#[no_mangle]
+#[link_section = ".trap"]
+unsafe fn _exception_handler() {
+    println!("Exception handler");
+    loop {}
 }
 
 //a convenience function for reading the performance timer
