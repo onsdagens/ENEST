@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 rtt-target = { version = "0.3.1", features=["riscv"]}
 esp32c3 = { git = "https://github.com/esp-rs/esp-pacs", rev = "ce6d5b5" }
-esp32c3-hal = {version = "0.11.0", features = ["direct-boot", "direct-vectoring"]}
+esp32c3-hal = {version = "0.11.0", features = ["direct-vectoring"]}
+esp-println = { version = "0.11.0", features = ["esp32c3"] }
 
 [patch.crates-io]
 rtt-target = { git = 'https://github.com/onsdagens/rtt-target' }

@@ -1,24 +1,23 @@
-
 #![no_std]
 #![no_main]
-#![feature(naked_functions)]
 
-use core::{panic::PanicInfo, arch::{global_asm, asm}}; //PanicInfo is required for defining the mandatory panic_handler symbol, global_asm allows us to write our assembly interrupt handlers.
-use rtt_target::{rprintln, rtt_init_print}; //required for debug printing
+use core::{
+    arch::{asm, global_asm},
+    panic::PanicInfo,
+}; //PanicInfo is required for defining the mandatory panic_handler symbol, global_asm allows us to write our assembly interrupt handlers.
 use esp32c3_hal::prelude::*; //this provides us with the entry symbol, and links in esp-riscv-rt
+use esp_println::println; //required for debug printing
 
 //these two imports provide us with convenience functions
 //around enabling, mapping and setting up the priority of interrupts.
-use esp32c3_hal::peripherals;
 use esp32c3_hal::interrupt;
+use esp32c3_hal::peripherals;
 
 //this generates an entry symbol, after general arch specific setup,
 //(setting mtvec to the vector table address, clearing .rwtext, among other things),
 //this is the entry point of the program
 #[entry]
 unsafe fn entry() -> ! {
-    rtt_init_print!(); //this macro generates the SEGGER_RTT block in memory required for debug printing
-    
     //this block enables and sets up the software interrupt we use for our measurement.
     interrupt::enable(
         peripherals::Interrupt::FROM_CPU_INTR1,
@@ -28,7 +27,7 @@ unsafe fn entry() -> ! {
     .unwrap();
     asm!(
         "
-        csrrwi x0, 0x7e0, 1 # what to count, for cycles write 1 for instructions write 2
+        csrrwi x0, 0x7e0, 2 # what to count, for cycles write 1 for instructions write 2
         csrrwi x0, 0x7e1, 0 # make sure the timer is disabled before resetting
         csrrwi x0, 0x7e2, 0 # reset counter
         "
@@ -38,18 +37,19 @@ unsafe fn entry() -> ! {
         "
         li t0, 0x600C002C # FROM_CPU_INTR1 (refer to ESP32C3-TRM)
         li t1, 1          # set flag
+        #csrrwi  x0, 0x7e1, 1 #enable timer
         sw t1, 0(t0)      # raise FROM_CPU_INTR1
         "
     );
-    rprintln!("Performance counter:{}", fetch_performance_timer());
-    loop{} //the entry may never return
+    println!("Performance counter:{}", fetch_performance_timer());
+    loop {} //the entry may never return
 }
 
 //the contents of a global_asm block pass right through the compiler
 //and are only touched by ``llvm-as`` which resolves symbols and pseudoinstructions, and the
 //linker which places the blocks in memory.
 global_asm!(
-    "   
+    "
         # we place the ENEST traps in the trap section
         .section .trap, \"ax\"
 
@@ -60,12 +60,13 @@ global_asm!(
         .global _start_trap1
 
         _start_trap1:
+        #csrrwi x0, 0x7e1, 0     # disable timer
         csrrwi  x0, 0x7e1, 1 #enable timer
         addi    sp, sp, -0x4c   # allocate space for the context on the stack
         sw      a0, 0x10(sp)    # start by pushing a0 and a1, we need them to stack CSRs and set threshold
         sw      a1, 0x14(sp)
-        csrrs   a0, mstatus, x0 # read and stack mstatus 
-        sw      a0, 0x00(sp)      
+        csrrs   a0, mstatus, x0 # read and stack mstatus
+        sw      a0, 0x00(sp)
         csrrs   a0, mepc, x0    # read and stack mepc
         sw      a0, 0x04(sp)
         #_STORE_PRIO SUBROUTINE
@@ -80,7 +81,7 @@ global_asm!(
             addi    a0, a0, 1       # the threshold must be set to one more then the priority of the current interrupt
             sw      a0, 0x194(a1)   # set the priority
             csrrsi  x0, mstatus, 8  # enable interrupts (end of critical section)
-        #END  
+        #END
         csrrwi x0, 0x7e1, 0     # disable timer
         sw      ra, 0x0c(sp)    # stack the caller saved registers
         sw      a2, 0x18(sp)
@@ -97,16 +98,16 @@ global_asm!(
         sw      t5, 0x44(sp)
         sw      t6, 0x48(sp)
         jal     ra, cpu_int_1_handler   # call into the user defined handler
-    
+
         #RETURN PRIO SUBROUTINE
             lw      a0, 0x08(sp)    # load the old threshold from the stack
             lui     a1, 0x600C2     # once again, this is the interrupt matrix base address
             sw      a0, 0x194(a1)   # restore the old threshold
         #END
-    
+
         lw      a0, 0x00(sp)        # restore CSRs and caller saved registers
         csrrw   x0, mstatus, a0
-        lw      a0, 0x04(sp)      
+        lw      a0, 0x04(sp)
         csrrw   x0, mepc, a0
         lw      ra, 0x0c(sp)
         lw      a0, 0x10(sp)
@@ -124,7 +125,7 @@ global_asm!(
         lw      t4, 0x40(sp)
         lw      t5, 0x44(sp)
         lw      t6, 0x48(sp)
-        addi    sp, sp, 0x4c      
+        addi    sp, sp, 0x4c
         mret                        # return from interrupt
 
     "
@@ -133,42 +134,33 @@ global_asm!(
 //The user defined handler
 #[no_mangle]
 #[link_section = ".trap"]
-unsafe fn cpu_int_1_handler(){
-    asm!("
+unsafe fn cpu_int_1_handler() {
+    asm!(
+        "
+        #csrrwi x0, 0x7e1, 0     # disable timer
         li t0, 0x600C002C #FROM_CPU_INTR1 (refer to ESP32C3-TRM)
         sw zero, 0(t0) #reset FROM_CPU_INTR1
-    ");
-    rprintln!("Handler entered");
+    "
+    );
+    println!("Handler entered");
 }
 
 //a convenience function for reading the performance timer
-#[naked]
+#[no_mangle]
 unsafe extern "C" fn fetch_performance_timer() -> i32 {
+    let x;
     asm!(
         "
-    csrr a0, 0x7e2
-    jr ra
+    csrr {reg}, 0x7e2
     ",
-        options(noreturn)
+        reg = out(reg) x,
     );
+    x
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 //this generates a panic handler symbol required for the linking step
 //(in our examples we never hit panic, however, the Rust compiler cannot guarantee a panic free runtime)
 #[panic_handler]
-fn panic_handler(_:&PanicInfo) -> !{
-    loop{}
+fn panic_handler(_: &PanicInfo) -> ! {
+    loop {}
 }
